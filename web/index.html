@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a5f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Diabetes Risk Prediction Dashboard — EBP Medical, Kyungwoon University">
+<title>Diabetes Risk Prediction — EBP Medical</title>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+/* ══════════════════════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════════════════════ */
+:root {
+  --primary:      #2563eb;
+  --primary-dark: #1d4ed8;
+  --bg:           #f0f4f8;
+  --card:         #ffffff;
+  --text:         #1e293b;
+  --text-light:   #64748b;
+  --border:       #e2e8f0;
+  --success:      #10b981;
+  --danger:       #ef4444;
+  --warning:      #f59e0b;
+  --radius:       12px;
+  --radius-sm:    8px;
+
+  /* spacing scale */
+  --sp-xs: clamp(4px, 1vw, 8px);
+  --sp-sm: clamp(8px, 2vw, 12px);
+  --sp-md: clamp(12px, 3vw, 18px);
+  --sp-lg: clamp(16px, 4vw, 24px);
+  --sp-xl: clamp(20px, 5vw, 32px);
+
+  /* safe area for notched phones */
+  --safe-top:    env(safe-area-inset-top,    0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left:   env(safe-area-inset-left,   0px);
+  --safe-right:  env(safe-area-inset-right,  0px);
+}
+
+/* ── Reset ───────────────────────────────────────────── */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue',
+               Arial, 'Noto Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+img, svg { display: block; max-width: 100%; }
+button, input, select { font: inherit; }
+
+/* ── Animations ──────────────────────────────────────── */
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+@keyframes spin   { to{transform:rotate(360deg)} }
+@keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+/* ══════════════════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════════════════ */
+.header {
+  background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+  color: white;
+  padding: calc(var(--sp-lg) + var(--safe-top)) var(--sp-md) var(--sp-lg);
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(37,99,235,0.3);
+  position: sticky; top: 0; z-index: 100;
+}
+.header h1 {
+  font-size: clamp(15px, 4vw, 26px);
+  font-weight: 700; letter-spacing: -0.3px; line-height: 1.2;
+}
+.header .sub  { font-size: clamp(11px, 2.5vw, 13px); opacity: .85; margin-top: 4px; }
+.header .inst { font-size: clamp(10px, 2vw, 11px); opacity: .6; margin-top: 3px; }
+
+/* ══════════════════════════════════════════════════════════
+   CONTAINER
+══════════════════════════════════════════════════════════ */
+.container {
+  max-width: 1200px; margin: 0 auto;
+  padding: var(--sp-lg)
+           calc(var(--sp-md) + var(--safe-right))
+           calc(var(--sp-xl) + var(--safe-bottom))
+           calc(var(--sp-md) + var(--safe-left));
+}
+
+/* ══════════════════════════════════════════════════════════
+   STATUS BAR
+══════════════════════════════════════════════════════════ */
+.status-bar {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--card); border-radius: var(--radius);
+  padding: 10px 14px; margin-bottom: var(--sp-md);
+  border: 1px solid var(--border);
+  font-size: clamp(11px, 2.5vw, 13px);
+}
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: #94a3b8; flex-shrink: 0;
+}
+.status-dot.ready   { background: var(--success); box-shadow: 0 0 6px rgba(16,185,129,.5); }
+.status-dot.loading { background: var(--warning); animation: pulse 1s infinite; }
+.status-dot.error   { background: var(--danger); }
+
+/* ══════════════════════════════════════════════════════════
+   CARDS
+══════════════════════════════════════════════════════════ */
+.card {
+  background: var(--card); border-radius: var(--radius);
+  border: 1px solid var(--border); overflow: hidden;
+  animation: fadeIn .3s ease;
+}
+.card-header {
+  padding: 11px var(--sp-md); font-weight: 600;
+  font-size: clamp(12px, 3vw, 14px);
+  border-bottom: 1px solid var(--border); background: #f8fafc;
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 6px;
+}
+.card-body { padding: var(--sp-md); }
+
+/* ══════════════════════════════════════════════════════════
+   LAYOUT GRIDS  (mobile → tablet → desktop)
+══════════════════════════════════════════════════════════ */
+.top-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: var(--sp-md); margin-bottom: var(--sp-md);
+}
+.charts-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: var(--sp-md); margin-bottom: var(--sp-md);
+}
+
+@media (min-width: 640px) {
+  .charts-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (min-width: 900px) {
+  .top-grid    { grid-template-columns: 1fr 1.6fr; }
+  .charts-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ══════════════════════════════════════════════════════════
+   UPLOAD ZONE
+══════════════════════════════════════════════════════════ */
+.upload-zone {
+  border: 2px dashed #cbd5e1; border-radius: var(--radius);
+  padding: clamp(24px, 6vw, 40px) var(--sp-md);
+  text-align: center; cursor: pointer;
+  transition: border-color .2s, background .2s;
+  background: #f8fafc; -webkit-tap-highlight-color: transparent;
+}
+.upload-zone:hover,
+.upload-zone:focus,
+.upload-zone.dragover {
+  border-color: var(--primary); background: #eff6ff; outline: none;
+}
+.upload-zone svg {
+  width: clamp(36px, 8vw, 48px); height: clamp(36px, 8vw, 48px);
+  color: #94a3b8; margin: 0 auto 10px;
+}
+.upload-zone p    { font-size: clamp(12px, 3vw, 13px); color: var(--text-light); }
+.upload-zone .hint{ font-size: clamp(10px, 2.5vw, 11px); margin-top: 5px; }
+#fileInput { display: none; }
+
+/* ══════════════════════════════════════════════════════════
+   BUTTONS  (min 44px touch target)
+══════════════════════════════════════════════════════════ */
+.btn {
+  min-height: 44px; padding: 10px 18px; border: none;
+  border-radius: var(--radius-sm);
+  font-size: clamp(13px, 3vw, 14px); font-weight: 600;
+  cursor: pointer; transition: background .15s, opacity .15s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.btn-primary {
+  background: var(--primary); color: white;
+  width: 100%; margin-top: 14px; display: block;
+}
+.btn-primary:hover  { background: var(--primary-dark); }
+.btn-primary:active { opacity: .85; }
+.btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-sm {
+  min-height: 36px; padding: 6px 14px;
+  font-size: clamp(11px, 2.5vw, 12px); border-radius: 6px;
+  border: 1px solid var(--border); background: white; cursor: pointer;
+  color: var(--text-light); touch-action: manipulation;
+}
+.btn-sm:hover  { background: #f1f5f9; }
+.btn-sm:active { background: #e2e8f0; }
+
+/* ══════════════════════════════════════════════════════════
+   BADGES
+══════════════════════════════════════════════════════════ */
+.badge {
+  display: inline-block; padding: 3px 10px; border-radius: 20px;
+  font-size: clamp(10px, 2.5vw, 11px); font-weight: 700; letter-spacing: .3px;
+  white-space: nowrap;
+}
+.badge-high   { background: #fee2e2; color: #b91c1c; }
+.badge-medium { background: #fef3c7; color: #b45309; }
+.badge-low    { background: #d1fae5; color: #065f46; }
+
+/* ══════════════════════════════════════════════════════════
+   SUMMARY — STATS
+══════════════════════════════════════════════════════════ */
+.stats-grid {
+  display: grid; grid-template-columns: repeat(3,1fr);
+  gap: clamp(8px,2vw,12px); margin-bottom: 16px;
+}
+.stat-box {
+  background: #f8fafc; border-radius: 10px;
+  padding: clamp(10px,3vw,14px) clamp(8px,2vw,12px);
+  text-align: center; border: 1px solid var(--border);
+}
+.stat-box .val {
+  font-size: clamp(22px, 6vw, 32px);
+  font-weight: 700; line-height: 1;
+}
+.stat-box .lbl { font-size: clamp(9px,2vw,11px); color: var(--text-light); margin-top: 4px; }
+.val-high { color: var(--danger); }
+.val-med  { color: var(--warning); }
+.val-low  { color: var(--success); }
+
+/* ── Nationality breakdown ──────────────────────────── */
+.nat-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 0; border-bottom: 1px solid #f1f5f9;
+  font-size: clamp(11px, 2.5vw, 13px);
+}
+.nat-row:last-child { border-bottom: none; }
+.nat-label { width: clamp(56px,12vw,72px); font-weight: 500; flex-shrink: 0; }
+.nat-bar-wrap { flex:1; height:8px; background:#e2e8f0; border-radius:4px; overflow:hidden; }
+.nat-bar { height:100%; border-radius:4px; transition:width .6s ease; }
+.nat-pct { width: 38px; text-align:right; font-weight:600; font-size:clamp(10px,2.5vw,12px); color:var(--primary); }
+
+/* ══════════════════════════════════════════════════════════
+   CHARTS
+══════════════════════════════════════════════════════════ */
+.chart-container {
+  position: relative;
+  /* aspect-ratio prevents chart overflow on small screens */
+  width: 100%;
+}
+.chart-container canvas {
+  max-width: 100%;
+}
+
+/* ══════════════════════════════════════════════════════════
+   FILTER BAR (above table)
+══════════════════════════════════════════════════════════ */
+.filter-bar {
+  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+}
+.filter-bar input,
+.filter-bar select {
+  height: 36px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 6px;
+  font-size: clamp(11px,2.5vw,12px); outline: none;
+  background: white; color: var(--text);
+  -webkit-appearance: none; appearance: none;
+  cursor: pointer;
+}
+.filter-bar input { min-width: 100px; flex: 1 1 100px; }
+.filter-bar select { flex: 1 1 100px; min-width: 90px; }
+.filter-bar input:focus,
+.filter-bar select:focus { border-color: var(--primary); }
+
+/* ══════════════════════════════════════════════════════════
+   PATIENT TABLE
+══════════════════════════════════════════════════════════ */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; font-size: clamp(11px, 2.5vw, 13px); }
+th {
+  text-align: left; padding: 9px 10px; font-weight: 600;
+  background: #f8fafc; border-bottom: 2px solid var(--border);
+  white-space: nowrap; font-size: clamp(10px,2.5vw,12px); color: var(--text-light);
+  cursor: pointer; user-select: none; position: sticky; top: 0;
+}
+th:hover  { background: #f1f5f9; }
+th .sort-arrow { margin-left: 4px; opacity: .4; }
+td { padding: 9px 10px; border-bottom: 1px solid #f8fafc; vertical-align: middle; }
+tr:hover td    { background: #f8fafc; }
+tr.selected td { background: #eff6ff !important; }
+tr { cursor: pointer; }
+
+.risk-bar-wrap {
+  width: clamp(48px,10vw,80px); height: 7px; background:#e2e8f0;
+  border-radius:4px; overflow:hidden; display:inline-block;
+  vertical-align:middle; margin-right:6px;
+}
+.risk-bar { height:100%; border-radius:4px; transition:width .5s; }
+
+/* Hide less-critical columns on small screens */
+@media (max-width: 500px) {
+  .col-homa, .col-fg { display: none; }
+}
+@media (max-width: 380px) {
+  .col-bmi { display: none; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   DETAIL PANEL
+══════════════════════════════════════════════════════════ */
+.detail-panel { margin-bottom: var(--sp-md); display: none; }
+.detail-grid {
+  display: grid; grid-template-columns: 1fr;
+  gap: var(--sp-md);
+}
+@media (min-width: 700px) {
+  .detail-grid { grid-template-columns: 1fr 1fr; }
+}
+
+.shap-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 0; border-bottom: 1px solid #f1f5f9;
+  font-size: clamp(11px,2.5vw,12px);
+}
+.shap-row:last-child { border-bottom: none; }
+.shap-name {
+  width: clamp(110px,30vw,170px); flex-shrink:0; color:var(--text-light);
+}
+.shap-val-wrap {
+  flex:1; height:8px; background:#f1f5f9;
+  border-radius:4px; overflow:hidden; min-width: 30px;
+}
+.shap-bar-pos { height:100%; border-radius:4px; background:#ef4444; transition:width .5s; }
+.shap-bar-neg { height:100%; border-radius:4px; background:#10b981; transition:width .5s; }
+.shap-num { width:46px; text-align:right; font-weight:600; font-size:clamp(10px,2.5vw,11px); }
+.shap-num.pos { color:#ef4444; }
+.shap-num.neg { color:#10b981; }
+
+.info-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+}
+@media (min-width: 480px) {
+  .info-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.info-cell {
+  background:#f8fafc; border-radius:8px;
+  padding: clamp(8px,2vw,10px); border:1px solid var(--border);
+}
+.info-cell .k { font-size:clamp(9px,2vw,10px); color:var(--text-light); margin-bottom:2px; }
+.info-cell .v { font-size:clamp(12px,3vw,13px); font-weight:600; }
+.info-cell.flag-warn .v { color:var(--danger); }
+
+/* ══════════════════════════════════════════════════════════
+   PLACEHOLDER
+══════════════════════════════════════════════════════════ */
+.placeholder {
+  text-align:center; padding: clamp(32px,8vw,56px) var(--sp-md);
+  color:var(--text-light); font-size:clamp(12px,3vw,13px);
+}
+.placeholder svg { width:48px; height:48px; opacity:.22; margin:0 auto 10px; }
+
+/* ══════════════════════════════════════════════════════════
+   SPINNER
+══════════════════════════════════════════════════════════ */
+.spinner {
+  display:inline-block; width:16px; height:16px;
+  border:2px solid #e2e8f0; border-top-color:var(--primary);
+  border-radius:50%; animation:spin .6s linear infinite;
+  vertical-align:middle; margin-right:6px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   FILE INFO
+══════════════════════════════════════════════════════════ */
+.file-info {
+  display:none; margin-top:12px;
+  background:#f0fdf4; border:1px solid #bbf7d0;
+  border-radius:8px; padding:10px 12px;
+  font-size:clamp(11px,2.5vw,12px); word-break:break-all;
+}
+
+/* ══════════════════════════════════════════════════════════
+   FOOTER
+══════════════════════════════════════════════════════════ */
+.footer {
+  text-align:center;
+  padding: var(--sp-lg) var(--sp-md) calc(var(--sp-lg) + var(--safe-bottom));
+  font-size:clamp(10px,2.5vw,12px); color:#94a3b8;
+}
+
+/* ══════════════════════════════════════════════════════════
+   SAMPLE LINK
+══════════════════════════════════════════════════════════ */
+.sample-link {
+  display:block; margin-top:12px; text-align:center;
+  font-size:clamp(11px,3vw,12px); color:var(--primary);
+  text-decoration:none;
+}
+.sample-link:hover { text-decoration:underline; }
+
+/* ══════════════════════════════════════════════════════════
+   PRINT / ACCESSIBILITY
+══════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    transition-duration: .01ms !important;
+  }
+}
+@media print {
+  .header { position: static; }
+  .upload-zone, .btn, .filter-bar, .footer { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════
+     HEADER
+══════════════════════════════════════════════════════ -->
+<header class="header">
+  <h1>🩺 Diabetes Risk Prediction Dashboard</h1>
+  <p class="sub">Upload patient CSV → Instant multi-factor risk scoring with cross-national interpretation</p>
+  <p class="inst">EBP Medical · Evidence-Based Practice · Kyungwoon University</p>
+</header>
+
+<div class="container">
+
+  <!-- Status Bar -->
+  <div class="status-bar" role="status" aria-live="polite">
+    <div class="status-dot ready" id="statusDot"></div>
+    <span id="statusText">Ready — upload a CSV file to begin analysis</span>
+  </div>
+
+  <!-- Top Grid: Upload + Summary -->
+  <div class="top-grid">
+
+    <!-- Upload Card -->
+    <div class="card">
+      <div class="card-header">📂 Upload Patient Data (CSV)</div>
+      <div class="card-body">
+        <div class="upload-zone" id="uploadZone" role="button" tabindex="0"
+             aria-label="Click or drag and drop a CSV file to upload">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+               stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5
+                 m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+          </svg>
+          <p>Click or drag &amp; drop a CSV file</p>
+          <p class="hint">Required columns: age, sex, nationality, BMI, HbA1c, fasting_glucose…</p>
+        </div>
+        <input type="file" id="fileInput" accept=".csv" aria-label="Select CSV file">
+
+        <button class="btn btn-primary" id="btnLoad" disabled aria-label="Analyze patients">
+          Analyze Patients
+        </button>
+
+        <a class="sample-link" id="sampleLink"
+           href="sample_data/diabetes_test_30patients.csv" download>
+          ⬇ Download sample CSV (30 patients)
+        </a>
+
+        <div class="file-info" id="fileInfo"></div>
+      </div>
+    </div>
+
+    <!-- Summary Card -->
+    <div class="card" id="summaryCard">
+      <div class="card-header">
+        📊 Cohort Summary
+        <button class="btn-sm" id="btnReset" style="display:none;" onclick="resetAll()">Reset</button>
+      </div>
+      <div class="card-body">
+        <div id="summaryPlaceholder" class="placeholder">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"
+               stroke="currentColor" aria-hidden="true">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0
+                 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2
+                 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2
+                 2 0 01-2-2z"/>
+          </svg>
+          <p>Upload CSV to see cohort summary</p>
+        </div>
+        <div id="summaryContent" style="display:none;">
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="val" id="statTotal">—</div>
+              <div class="lbl">Total Patients</div>
+            </div>
+            <div class="stat-box">
+              <div class="val val-high" id="statHigh">—</div>
+              <div class="lbl">High Risk</div>
+            </div>
+            <div class="stat-box">
+              <div class="val val-med" id="statMed">—</div>
+              <div class="lbl">Medium Risk</div>
+            </div>
+          </div>
+          <div style="font-size:clamp(10px,2.5vw,12px);font-weight:600;margin-bottom:8px;color:var(--text-light);">
+            RISK DISTRIBUTION BY NATIONALITY
+          </div>
+          <div id="natBreakdown"></div>
+          <div style="margin-top:14px;font-size:clamp(10px,2.5vw,12px);font-weight:600;
+               color:var(--text-light);margin-bottom:8px;">
+            KEY BIOMARKER AVERAGES
+          </div>
+          <div id="biomarkerAvg"></div>
+        </div>
+      </div>
+    </div>
+  </div><!-- /top-grid -->
+
+  <!-- Charts Row -->
+  <div class="charts-grid" id="chartsRow" style="display:none;">
+    <div class="card">
+      <div class="card-header">Risk Score Distribution</div>
+      <div class="card-body" style="padding:12px;">
+        <div class="chart-container"><canvas id="chartRisk"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">HbA1c by Nationality</div>
+      <div class="card-body" style="padding:12px;">
+        <div class="chart-container"><canvas id="chartHba1c"></canvas></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-header">BMI vs Fasting Glucose</div>
+      <div class="card-body" style="padding:12px;">
+        <div class="chart-container"><canvas id="chartScatter"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail Panel -->
+  <div class="detail-panel card" id="detailPanel" role="region" aria-label="Patient detail">
+    <div class="card-header">
+      🔍 Patient Detail — <span id="detailTitle"></span>
+      <button class="btn-sm" onclick="closeDetail()" aria-label="Close detail panel">✕ Close</button>
+    </div>
+    <div class="card-body">
+      <div class="detail-grid">
+        <div>
+          <div style="font-size:clamp(10px,2.5vw,12px);font-weight:600;color:var(--text-light);margin-bottom:10px;">
+            CLINICAL PROFILE
+          </div>
+          <div class="info-grid" id="detailInfo"></div>
+        </div>
+        <div>
+          <div style="font-size:clamp(10px,2.5vw,12px);font-weight:600;color:var(--text-light);margin-bottom:10px;">
+            RISK FACTOR CONTRIBUTION
+            <span style="font-weight:400;margin-left:6px;">
+              <span style="color:#ef4444;">■ Risk↑</span>&nbsp;
+              <span style="color:#10b981;">■ Risk↓</span>
+            </span>
+          </div>
+          <div id="shapBars"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Patient Table -->
+  <div class="card" id="tableCard" style="margin-bottom:20px;">
+    <div class="card-header">
+      👥 Patient Risk Table
+      <div class="filter-bar">
+        <input id="searchBox" type="search" placeholder="Search…"
+               oninput="filterTable()" aria-label="Search patients">
+        <select id="filterRisk" onchange="filterTable()" aria-label="Filter by risk level">
+          <option value="">All Risk</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select id="filterNat" onchange="filterTable()" aria-label="Filter by nationality">
+          <option value="">All Nationality</option>
+          <option value="Korean">Korean</option>
+          <option value="Chinese">Chinese</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0;">
+      <div id="tablePlaceholder" class="placeholder" style="padding:40px 20px;">
+        <p>Upload CSV to view patient table</p>
+      </div>
+      <div class="table-wrap" id="tableWrap" style="display:none;">
+        <table id="patientTable" role="grid">
+          <thead>
+            <tr>
+              <th onclick="sortTable('id')">ID <span class="sort-arrow">↕</span></th>
+              <th onclick="sortTable('nationality')">Nationality <span class="sort-arrow">↕</span></th>
+              <th onclick="sortTable('sex')">Sex</th>
+              <th onclick="sortTable('age')">Age <span class="sort-arrow">↕</span></th>
+              <th class="col-bmi" onclick="sortTable('bmi')">BMI <span class="sort-arrow">↕</span></th>
+              <th onclick="sortTable('hba1c')">HbA1c <span class="sort-arrow">↕</span></th>
+              <th class="col-fg" onclick="sortTable('fg')">Fasting Glu. <span class="sort-arrow">↕</span></th>
+              <th class="col-homa" onclick="sortTable('homa')">HOMA-IR <span class="sort-arrow">↕</span></th>
+              <th onclick="sortTable('risk')">Risk <span class="sort-arrow">↕</span></th>
+              <th>Level</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /container -->
+
+<footer class="footer">
+  Diabetes Risk Prediction · Rule-based Scoring (EBP Epidemiology Model) ·
+  EBP Medical · Kyungwoon University
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// RISK SCORING ENGINE
+// ═══════════════════════════════════════════════════════════
+function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+
+function scorePatient(r) {
+  const nat    = r.nationality || 'Other';
+  const isMale = (r.sex || 'M') === 'M';
+  let logit = -3.5;
+  const contributions = [];
+
+  const hba1c = parseFloat(r.HbA1c) || 5.3;
+  const hba1c_contrib = (hba1c - 5.5) * 2.8;
+  contributions.push({ name:'HbA1c', val:hba1c, contrib:hba1c_contrib, unit:'%' });
+  logit += hba1c_contrib;
+
+  const fg = parseFloat(r.fasting_glucose) || 90;
+  const fg_contrib = (fg - 95) * 0.04;
+  contributions.push({ name:'Fasting Glucose', val:fg, contrib:fg_contrib, unit:'mg/dL' });
+  logit += fg_contrib;
+
+  const homa = parseFloat(r.HOMA_IR) || 1.5;
+  const homa_contrib = (homa - 2.0) * 0.35;
+  contributions.push({ name:'HOMA-IR', val:homa, contrib:homa_contrib, unit:'' });
+  logit += homa_contrib;
+
+  const bmi = parseFloat(r.BMI) || 24;
+  const bmiThresh = nat === 'Other' ? 27.0 : 23.5;
+  const bmi_contrib = (bmi - bmiThresh) * 0.12;
+  contributions.push({ name:'BMI ('+nat+' adj.)', val:bmi, contrib:bmi_contrib, unit:'kg/m²' });
+  logit += bmi_contrib;
+
+  const waist = parseFloat(r.waist_circumference_cm) || 82;
+  const waistThresh = isMale ? 90 : 85;
+  const waist_contrib = (waist - waistThresh) * 0.04;
+  contributions.push({ name:'Waist Circ.', val:waist, contrib:waist_contrib, unit:'cm' });
+  logit += waist_contrib;
+
+  const tg = parseFloat(r.triglycerides) || 130;
+  const tg_contrib = (tg - 130) * 0.005;
+  contributions.push({ name:'Triglycerides', val:tg, contrib:tg_contrib, unit:'mg/dL' });
+  logit += tg_contrib;
+
+  const hdl = parseFloat(r.HDL) || 50;
+  const hdlThresh = isMale ? 45 : 52;
+  const hdl_contrib = -(hdl - hdlThresh) * 0.04;
+  contributions.push({ name:'HDL (protective)', val:hdl, contrib:hdl_contrib, unit:'mg/dL' });
+  logit += hdl_contrib;
+
+  const sbp = parseFloat(r.systolic_BP) || 120;
+  const sbp_contrib = (sbp - 120) * 0.015;
+  contributions.push({ name:'Systolic BP', val:sbp, contrib:sbp_contrib, unit:'mmHg' });
+  logit += sbp_contrib;
+
+  const crp = parseFloat(r.CRP) || 1.0;
+  const crp_contrib = (crp - 1.0) * 0.12;
+  contributions.push({ name:'CRP (Inflam.)', val:crp, contrib:crp_contrib, unit:'mg/L' });
+  logit += crp_contrib;
+
+  const stress = parseFloat(r.stress_score_PSS) || 18;
+  const stress_contrib = (stress - 18) * 0.04;
+  contributions.push({ name:'Stress (PSS)', val:stress, contrib:stress_contrib, unit:'' });
+  logit += stress_contrib;
+
+  const met = parseFloat(r.physical_activity_MET) || 22;
+  const met_contrib = -(met - 22) * 0.025;
+  contributions.push({ name:'Physical Activity', val:met, contrib:met_contrib, unit:'MET' });
+  logit += met_contrib;
+
+  const carb = parseFloat(r.carb_intake_ratio) || 50;
+  const carb_contrib = nat === 'Korean' ? (carb-55)*0.06 : (carb-50)*0.02;
+  contributions.push({ name:'Carb Ratio (%)', val:carb, contrib:carb_contrib, unit:'%' });
+  logit += carb_contrib;
+
+  const age = parseInt(r.age) || 45;
+  const age_contrib = (age - 45) * 0.025;
+  contributions.push({ name:'Age', val:age, contrib:age_contrib, unit:'yr' });
+  logit += age_contrib;
+
+  const fam = parseInt(r.family_history_diabetes) || 0;
+  const fam_contrib = fam * 0.7;
+  contributions.push({ name:'Family History', val:fam?'Yes':'No', contrib:fam_contrib, unit:'' });
+  logit += fam_contrib;
+
+  const gen = parseFloat(r.genetic_risk_score) || 50;
+  const gen_contrib = (gen - 50) * 0.02;
+  contributions.push({ name:'Genetic Risk', val:gen, contrib:gen_contrib, unit:'' });
+  logit += gen_contrib;
+
+  const smk = r.smoking_status || 'Never';
+  const smk_contrib = smk==='Current'?0.4:smk==='Former'?0.15:0;
+  contributions.push({ name:'Smoking', val:smk, contrib:smk_contrib, unit:'' });
+  logit += smk_contrib;
+
+  const htn = parseInt(r.hypertension) || 0;
+  const htn_contrib = htn * 0.3;
+  contributions.push({ name:'Hypertension', val:htn?'Yes':'No', contrib:htn_contrib, unit:'' });
+  logit += htn_contrib;
+
+  const prob = sigmoid(logit);
+  const score = Math.round(prob * 100);
+  contributions.sort((a,b) => Math.abs(b.contrib) - Math.abs(a.contrib));
+  return { prob, score, contributions };
+}
+
+function riskLevel(score) {
+  return score >= 35 ? 'high' : score >= 18 ? 'medium' : 'low';
+}
+function riskColor(level) {
+  return level==='high'?'#ef4444':level==='medium'?'#f59e0b':'#10b981';
+}
+
+// ═══════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════
+let allPatients = [], filteredPatients = [], charts = {}, sortDir = {};
+let pendingFile = null;
+
+// ═══════════════════════════════════════════════════════════
+// FILE UPLOAD
+// ═══════════════════════════════════════════════════════════
+const uploadZone = document.getElementById('uploadZone');
+const fileInput  = document.getElementById('fileInput');
+const btnLoad    = document.getElementById('btnLoad');
+
+// Click / keyboard
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' ') fileInput.click(); });
+
+// File input change
+fileInput.addEventListener('change', e => { if (e.target.files[0]) prepareFile(e.target.files[0]); });
+
+// Drag & drop (desktop + Android Chrome)
+uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault(); uploadZone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) prepareFile(e.dataTransfer.files[0]);
+});
+
+function prepareFile(file) {
+  pendingFile = file;
+  const info = document.getElementById('fileInfo');
+  info.style.display = 'block';
+  info.innerHTML = '✅ <strong>' + file.name + '</strong> &nbsp;·&nbsp; ' +
+                   (file.size/1024).toFixed(1) + ' KB';
+  btnLoad.disabled = false;
+  btnLoad.textContent = 'Analyze Patients';
+}
+
+btnLoad.addEventListener('click', () => {
+  if (!pendingFile) return;
+  btnLoad.innerHTML = '<span class="spinner"></span>Analyzing…';
+  btnLoad.disabled = true;
+  updateStatus('Analyzing…', 'loading');
+  setTimeout(() => {
+    Papa.parse(pendingFile, {
+      header: true, skipEmptyLines: true,
+      complete: res => {
+        processPatients(res.data);
+        btnLoad.innerHTML = 'Analyze Patients';
+      },
+      error: () => {
+        updateStatus('Error reading file — please check CSV format', 'error');
+        btnLoad.innerHTML = 'Analyze Patients';
+        btnLoad.disabled = false;
+      }
+    });
+  }, 50); // let spinner render first
+});
+
+// ═══════════════════════════════════════════════════════════
+// PROCESS
+// ═══════════════════════════════════════════════════════════
+function processPatients(rows) {
+  allPatients = rows.map((r, i) => {
+    const { prob, score, contributions } = scorePatient(r);
+    return { ...r, _prob:prob, _score:score, _level:riskLevel(score), _contrib:contributions, _idx:i };
+  });
+  filteredPatients = [...allPatients];
+  updateStatus('Analyzed ' + allPatients.length + ' patients — ready');
+  renderSummary();
+  renderCharts();
+  renderTable();
+  document.getElementById('btnReset').style.display = 'inline';
+  document.getElementById('chartsRow').style.display = 'grid';
+}
+
+// ═══════════════════════════════════════════════════════════
+// SUMMARY
+// ═══════════════════════════════════════════════════════════
+function renderSummary() {
+  document.getElementById('summaryPlaceholder').style.display = 'none';
+  document.getElementById('summaryContent').style.display = 'block';
+
+  const high = allPatients.filter(p => p._level==='high').length;
+  const med  = allPatients.filter(p => p._level==='medium').length;
+  document.getElementById('statTotal').textContent = allPatients.length;
+  document.getElementById('statHigh').textContent  = high;
+  document.getElementById('statMed').textContent   = med;
+
+  const nats = ['Korean','Chinese','Other'];
+  const natColors = { Korean:'#4CAF50', Chinese:'#2196F3', Other:'#FF9800' };
+  let nbHtml = '';
+  nats.forEach(n => {
+    const sub  = allPatients.filter(p => (p.nationality||'')===n);
+    if (!sub.length) return;
+    const highN = sub.filter(p => p._level==='high').length;
+    const pct   = Math.round(highN/sub.length*100);
+    nbHtml += '<div class="nat-row">' +
+      '<span class="nat-label">' + n + '</span>' +
+      '<span style="font-size:10px;color:var(--text-light);width:24px;">' + sub.length + 'pt</span>' +
+      '<div class="nat-bar-wrap"><div class="nat-bar" style="width:' + pct + '%;background:' + natColors[n] + ';"></div></div>' +
+      '<span class="nat-pct">' + pct + '%</span>' +
+      '<span style="font-size:10px;color:var(--text-light);margin-left:2px;">high risk</span>' +
+      '</div>';
+  });
+  document.getElementById('natBreakdown').innerHTML = nbHtml;
+
+  const keys = [
+    ['HbA1c','HbA1c','%',5.7],
+    ['fasting_glucose','Fasting Glu.','mg/dL',100],
+    ['BMI','BMI','kg/m²',25],
+    ['HOMA_IR','HOMA-IR','',2.5],
+  ];
+  let baHtml = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">';
+  keys.forEach(([col,lbl,unit,thresh]) => {
+    const vals = allPatients.map(p => parseFloat(p[col])).filter(v => !isNaN(v));
+    const avg  = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(2) : '—';
+    const flag = parseFloat(avg) > thresh;
+    baHtml += '<div class="info-cell ' + (flag?'flag-warn':'') + '">' +
+      '<div class="k">' + lbl + '</div>' +
+      '<div class="v">' + avg + ' <span style="font-size:10px;font-weight:400;">' + unit + '</span></div>' +
+      '</div>';
+  });
+  baHtml += '</div>';
+  document.getElementById('biomarkerAvg').innerHTML = baHtml;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════════════════════
+Chart.defaults.font.size = 11;
+Chart.defaults.responsive = true;
+Chart.defaults.maintainAspectRatio = true;
+
+function renderCharts() {
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  // 1. Risk histogram
+  const counts = new Array(10).fill(0);
+  allPatients.forEach(p => { counts[Math.min(Math.floor(p._score/10), 9)]++; });
+  const barColors = counts.map((_,i) => i>=3?'#ef4444':i>=1?'#f59e0b':'#10b981');
+  charts.risk = new Chart(document.getElementById('chartRisk'), {
+    type: 'bar',
+    data: {
+      labels: ['0-10','10-20','20-30','30-40','40-50','50-60','60-70','70-80','80-90','90-100'],
+      datasets: [{ data:counts, backgroundColor:barColors, borderRadius:4 }]
+    },
+    options: {
+      plugins:{ legend:{display:false} },
+      scales:{ x:{ticks:{font:{size:9}}}, y:{ticks:{font:{size:9},stepSize:1}} }
+    }
+  });
+
+  // 2. HbA1c by nationality
+  const natNames  = ['Korean','Chinese','Other'];
+  const natColors2 = ['#4CAF50','#2196F3','#FF9800'];
+  const hba1cData = natNames.map(n => {
+    const sub = allPatients.filter(p=>(p.nationality||'')===n);
+    if (!sub.length) return 0;
+    return (sub.reduce((a,p)=>a+parseFloat(p.HbA1c||0),0)/sub.length).toFixed(3);
+  });
+  charts.hba1c = new Chart(document.getElementById('chartHba1c'), {
+    type: 'bar',
+    data: {
+      labels: natNames,
+      datasets:[{ data:hba1cData, backgroundColor:natColors2, borderRadius:6, label:'Mean HbA1c' }]
+    },
+    options: {
+      plugins:{ legend:{display:false} },
+      scales:{
+        y:{ min:5.0, ticks:{font:{size:9}}, title:{display:true,text:'HbA1c (%)',font:{size:9}} },
+        x:{ ticks:{font:{size:10}} }
+      }
+    }
+  });
+
+  // 3. BMI vs Fasting Glucose scatter
+  const natColorMap = { Korean:'#4CAF50', Chinese:'#2196F3', Other:'#FF9800' };
+  charts.scatter = new Chart(document.getElementById('chartScatter'), {
+    type: 'bubble',
+    data: {
+      datasets: natNames.map(n => ({
+        label: n,
+        data: allPatients.filter(p=>(p.nationality||'')===n)
+              .map(p=>({x:parseFloat(p.BMI)||0, y:parseFloat(p.fasting_glucose)||0, r:5})),
+        backgroundColor: natColorMap[n]+'99',
+        borderColor: natColorMap[n],
+        pointRadius: 5,
+      }))
+    },
+    options: {
+      plugins:{ legend:{labels:{font:{size:9}}} },
+      scales:{
+        x:{ title:{display:true,text:'BMI',font:{size:9}}, ticks:{font:{size:9}} },
+        y:{ title:{display:true,text:'Fasting Glu.',font:{size:9}}, ticks:{font:{size:9}} }
+      }
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// TABLE
+// ═══════════════════════════════════════════════════════════
+function renderTable() {
+  document.getElementById('tablePlaceholder').style.display = 'none';
+  document.getElementById('tableWrap').style.display = 'block';
+  rebuildTableBody();
+}
+
+function rebuildTableBody() {
+  const tbody = document.getElementById('tableBody');
+  if (!filteredPatients.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;padding:20px;color:var(--text-light);">No patients match filters</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filteredPatients.map(p => {
+    const c = riskColor(p._level);
+    return '<tr onclick="selectPatient(' + p._idx + ')">' +
+      '<td>' + (p.participant_id||p._idx+1) + '</td>' +
+      '<td>' + (p.nationality||'—') + '</td>' +
+      '<td>' + (p.sex||'—') + '</td>' +
+      '<td>' + (p.age||'—') + '</td>' +
+      '<td class="col-bmi">' + parseFloat(p.BMI||0).toFixed(1) + '</td>' +
+      '<td>' + parseFloat(p.HbA1c||0).toFixed(2) + '</td>' +
+      '<td class="col-fg">' + parseFloat(p.fasting_glucose||0).toFixed(0) + '</td>' +
+      '<td class="col-homa">' + parseFloat(p.HOMA_IR||0).toFixed(2) + '</td>' +
+      '<td><div class="risk-bar-wrap"><div class="risk-bar" style="width:' + p._score + '%;background:' + c + ';"></div></div>' +
+        '<span style="font-size:12px;font-weight:700;color:' + c + ';">' + p._score + '</span></td>' +
+      '<td><span class="badge badge-' + p._level + '">' + p._level.toUpperCase() + '</span></td>' +
+      '</tr>';
+  }).join('');
+}
+
+function sortTable(key) {
+  const keyMap = {id:'participant_id',nationality:'nationality',sex:'sex',age:'age',
+                  bmi:'BMI',hba1c:'HbA1c',fg:'fasting_glucose',homa:'HOMA_IR',risk:'_score'};
+  const field = keyMap[key]||key;
+  sortDir[key] = !sortDir[key];
+  filteredPatients.sort((a,b) => {
+    const va = isNaN(a[field]) ? a[field] : parseFloat(a[field]);
+    const vb = isNaN(b[field]) ? b[field] : parseFloat(b[field]);
+    return sortDir[key] ? (va<vb?-1:va>vb?1:0) : (va<vb?1:va>vb?-1:0);
+  });
+  rebuildTableBody();
+}
+
+function filterTable() {
+  const q   = document.getElementById('searchBox').value.toLowerCase();
+  const risk = document.getElementById('filterRisk').value;
+  const nat  = document.getElementById('filterNat').value;
+  filteredPatients = allPatients.filter(p => {
+    const matchQ = !q   || Object.values(p).some(v => String(v).toLowerCase().includes(q));
+    const matchR = !risk|| p._level===risk;
+    const matchN = !nat || (p.nationality||'')===nat;
+    return matchQ && matchR && matchN;
+  });
+  rebuildTableBody();
+}
+
+// ═══════════════════════════════════════════════════════════
+// DETAIL PANEL
+// ═══════════════════════════════════════════════════════════
+function selectPatient(idx) {
+  const p = allPatients[idx];
+  if (!p) return;
+
+  document.querySelectorAll('#patientTable tr').forEach(r => r.classList.remove('selected'));
+
+  document.getElementById('detailTitle').innerHTML =
+    'Patient ' + (p.participant_id||idx+1) + ' · ' + p.nationality + ' · ' + p.sex + ' · Age ' + p.age +
+    ' &nbsp;<span class="badge badge-' + p._level + '">' + p._level.toUpperCase() + ' · ' + p._score + '%</span>';
+
+  const cells = [
+    { k:'BMI',         v:parseFloat(p.BMI||0).toFixed(1),                             warn:p.nationality==='Other'?parseFloat(p.BMI)>27:parseFloat(p.BMI)>23.5 },
+    { k:'HbA1c',       v:parseFloat(p.HbA1c||0).toFixed(2)+'%',                       warn:parseFloat(p.HbA1c)>=5.7 },
+    { k:'Fasting Glu.',v:parseFloat(p.fasting_glucose||0).toFixed(0)+' mg/dL',        warn:parseFloat(p.fasting_glucose)>=100 },
+    { k:'HOMA-IR',     v:parseFloat(p.HOMA_IR||0).toFixed(2),                         warn:parseFloat(p.HOMA_IR)>=2.5 },
+    { k:'HDL',         v:parseFloat(p.HDL||0).toFixed(0)+' mg/dL',                    warn:parseFloat(p.HDL)<(p.sex==='M'?40:50) },
+    { k:'Triglyc.',    v:parseFloat(p.triglycerides||0).toFixed(0)+' mg/dL',          warn:parseFloat(p.triglycerides)>=150 },
+    { k:'Systolic BP', v:parseFloat(p.systolic_BP||0).toFixed(0)+' mmHg',             warn:parseFloat(p.systolic_BP)>=130 },
+    { k:'Stress PSS',  v:parseFloat(p.stress_score_PSS||0).toFixed(1),                warn:parseFloat(p.stress_score_PSS)>=20 },
+    { k:'Smoking',     v:p.smoking_status||'—',                                        warn:p.smoking_status==='Current' },
+    { k:'Fam.History', v:p.family_history_diabetes=='1'?'Yes':'No',                   warn:p.family_history_diabetes=='1' },
+    { k:'Genetic Risk',v:parseFloat(p.genetic_risk_score||0).toFixed(1),              warn:parseFloat(p.genetic_risk_score)>=65 },
+    { k:'Physical Act.',v:parseFloat(p.physical_activity_MET||0).toFixed(1)+' MET',  warn:parseFloat(p.physical_activity_MET)<15 },
+  ];
+  document.getElementById('detailInfo').innerHTML = cells.map(c =>
+    '<div class="info-cell ' + (c.warn?'flag-warn':'') + '">' +
+    '<div class="k">' + c.k + '</div>' +
+    '<div class="v">' + c.v + '</div></div>'
+  ).join('');
+
+  const top    = p._contrib.slice(0, 12);
+  const maxAbs = Math.max(...top.map(c => Math.abs(c.contrib)), 0.01);
+  document.getElementById('shapBars').innerHTML = top.map(c => {
+    const pct = (Math.abs(c.contrib)/maxAbs*100).toFixed(1);
+    const pos = c.contrib >= 0;
+    const val = typeof c.val==='number' ? c.val.toFixed(2) : c.val;
+    return '<div class="shap-row">' +
+      '<span class="shap-name">' + c.name + ' <span style="opacity:.6;font-size:10px;">(' + val + ')</span></span>' +
+      '<div class="shap-val-wrap"><div class="' + (pos?'shap-bar-pos':'shap-bar-neg') + '" style="width:' + pct + '%;"></div></div>' +
+      '<span class="shap-num ' + (pos?'pos':'neg') + '">' + (pos?'+':'') + c.contrib.toFixed(3) + '</span>' +
+      '</div>';
+  }).join('');
+
+  const panel = document.getElementById('detailPanel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeDetail() {
+  document.getElementById('detailPanel').style.display = 'none';
+  document.querySelectorAll('#patientTable tr').forEach(r => r.classList.remove('selected'));
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILS
+// ═══════════════════════════════════════════════════════════
+function updateStatus(msg, type='ready') {
+  document.getElementById('statusDot').className = 'status-dot ' + type;
+  document.getElementById('statusText').textContent = msg;
+}
+
+function resetAll() {
+  allPatients = []; filteredPatients = [];
+  ['summaryPlaceholder','tablePlaceholder'].forEach(id => document.getElementById(id).style.display='block');
+  ['summaryContent','tableWrap','chartsRow','detailPanel'].forEach(id => document.getElementById(id).style.display='none');
+  document.getElementById('fileInfo').style.display = 'none';
+  document.getElementById('btnReset').style.display = 'none';
+  btnLoad.disabled = true; pendingFile = null;
+  fileInput.value = '';
+  Object.values(charts).forEach(c => c.destroy()); charts = {};
+  updateStatus('Ready — upload a CSV file to begin analysis');
+}
+</script>
+</body>
+</html>
